@@ -92,7 +92,9 @@ def token_requerido(f):
 # RUTAS PÚBLICAS & LOGIN
 # ===========================================================
 @app.route("/")
-def index(): return render_template("login.html")
+def index():
+    return {"status": "backend ok"}
+
 
 @app.route("/login", methods=["POST"])
 def login():

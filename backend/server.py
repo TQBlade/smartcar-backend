@@ -1,5 +1,5 @@
 # ===========================================================
-#  SmartCar - Servidor Principal (CORREGIDO PARA NUEVA ESTRUCTURA)
+#  SmartCar - Servidor Principal (PRODUCCIÓN / NUBE)
 # ===========================================================
 import sys
 import os
@@ -13,11 +13,7 @@ from openpyxl import Workbook
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# YA NO NECESITAMOS sys.path.append(...) PORQUE ESTAMOS EN LA RAÍZ
-
-# ===========================================================
-# IMPORTACIONES (NOTA: Quitamos "backend.")
-# ===========================================================
+# Importaciones corregidas para la estructura plana en Render
 from core.db.connection import get_connection
 from models.user_model import verificar_usuario
 from core.auditoria_utils import registrar_auditoria_global 
@@ -63,17 +59,17 @@ from models.admin_model import (
     eliminar_vigilante_completo
 )
 
-# ===========================================================
-# CONFIGURACIÓN FLASK
-# ===========================================================
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "frontend", "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+
+# --- CONFIGURACIÓN CORS PARA PRODUCCIÓN ---
+# Esto permite que Vercel (o cualquier dominio) consuma tu API sin errores.
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-app.config["SECRET_KEY"] = "SmartCar_SeguridadUltra_2025"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "SmartCar_SeguridadUltra_2025")
 
 def token_requerido(f):
     @wraps(f)
@@ -88,13 +84,8 @@ def token_requerido(f):
         return f(*args, **kwargs)
     return decorador
 
-# ===========================================================
-# RUTAS PÚBLICAS & LOGIN
-# ===========================================================
 @app.route("/")
-def index():
-    return {"status": "backend ok"}
-
+def index(): return "SmartCar API is Running on Cloud 🚀"
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -114,36 +105,25 @@ def login():
         return jsonify({"status": "ok", "token": token, "user": user}), 200
     except Exception as e: return jsonify({"error": str(e)}), 500
 
-# ===========================================================
-# RUTAS DASHBOARD VIGILANTE & OCUPACIÓN
-# ===========================================================
-
-# --- ESTA ERA LA RUTA QUE FALTABA Y CAUSABA EL 404 ---
+# RUTAS DASHBOARD VIGILANTE
 @app.route("/api/ocupacion", methods=["GET"])
-def api_ocupacion():
-    return jsonify(obtener_ocupacion_real())
-# -----------------------------------------------------
+def api_ocupacion(): return jsonify(obtener_ocupacion_real())
 
 @app.route("/api/ultimos_accesos", methods=["GET"])
-def api_ultimos_accesos():
-    return jsonify(obtener_ultimos_accesos())
+def api_ultimos_accesos(): return jsonify(obtener_ultimos_accesos())
 
 @app.route("/api/total_vehiculos", methods=["GET"])
-def api_total_vehiculos():
-    return jsonify(contar_total_vehiculos())
+def api_total_vehiculos(): return jsonify(contar_total_vehiculos())
 
 @app.route("/api/alertas_activas", methods=["GET"])
-def api_alertas_activas():
-    return jsonify(contar_alertas_activas())
+def api_alertas_activas(): return jsonify(contar_alertas_activas())
 
 @app.route("/api/buscar_placa/<placa>", methods=["GET"])
 def api_buscar_placa(placa):
     data = buscar_placa_bd(placa)
     return jsonify(data) if data else (jsonify({"error": "No encontrada"}), 404)
 
-# ===========================================================
 # RUTAS DASHBOARD ADMIN
-# ===========================================================
 @app.route("/api/admin/resumen", methods=["GET"])
 @token_requerido
 def api_admin_resumen(): return jsonify(obtener_datos_dashboard())
@@ -156,96 +136,45 @@ def api_admin_accesos(): return jsonify(obtener_accesos_detalle())
 @token_requerido
 def api_admin_auditoria(): return jsonify(obtener_historial_auditoria()), 200
 
-# ===========================================================
-# GESTIÓN DE VIGILANTES / USUARIOS (CRUD)
-# ===========================================================
+# GESTIÓN VIGILANTES
 @app.route("/api/admin/vigilantes", methods=["GET"])
 @token_requerido
-def list_vigilantes():
-    return jsonify(obtener_todos_vigilantes()), 200
+def list_vigilantes(): return jsonify(obtener_todos_vigilantes()), 200
 
 @app.route("/api/admin/registrar_vigilante", methods=["POST"])
 @token_requerido
 def api_registrar_vigilante():
-    try:
-        data = request.get_json()
-        if not data.get('usuario') or not data.get('clave'):
-            return jsonify({"error": "Usuario y Clave son obligatorios"}), 400
-        if registrar_vigilante_completo(data, request.usuario_actual['id_audit']):
-            return jsonify({"mensaje": "Vigilante registrado correctamente"}), 201
-        return jsonify({"error": "Error al registrar"}), 500
-    except Exception as e: return jsonify({"error": str(e)}), 500
+    if registrar_vigilante_completo(request.get_json(), request.usuario_actual['id_audit']):
+        return jsonify({"mensaje": "Registrado"}), 201
+    return jsonify({"error": "Error al registrar"}), 500
 
-@app.route("/api/admin/vigilantes/<int:id_vigilante>", methods=["PUT"])
+@app.route("/api/admin/vigilantes/<int:id>", methods=["PUT"])
 @token_requerido
-def update_vigilante_api(id_vigilante):
-    if actualizar_vigilante_completo(id_vigilante, request.get_json(), request.usuario_actual['id_audit']):
-        return jsonify({"mensaje": "Actualizado correctamente"}), 200
-    return jsonify({"error": "No se pudo actualizar"}), 500
+def update_vigilante_api(id):
+    if actualizar_vigilante_completo(id, request.get_json(), request.usuario_actual['id_audit']):
+        return jsonify({"mensaje": "Actualizado"}), 200
+    return jsonify({"error": "Error"}), 500
 
-@app.route("/api/admin/vigilantes/<int:id_vigilante>", methods=["DELETE"])
+@app.route("/api/admin/vigilantes/<int:id>", methods=["DELETE"])
 @token_requerido
-def delete_vigilante_api(id_vigilante):
-    if eliminar_vigilante_completo(id_vigilante, request.usuario_actual['id_audit']):
-        return jsonify({"mensaje": "Eliminado correctamente"}), 200
-    return jsonify({"error": "No se pudo eliminar"}), 500
+def delete_vigilante_api(id):
+    if eliminar_vigilante_completo(id, request.usuario_actual['id_audit']):
+        return jsonify({"mensaje": "Eliminado"}), 200
+    return jsonify({"error": "Error"}), 500
 
-# ===========================================================
-# REPORTES GERENCIALES (EXCEL / PDF)
-# ===========================================================
+# REPORTES
 @app.route("/api/admin/exportar/excel", methods=["GET"])
 @token_requerido
 def exportar_excel():
-    try:
-        fi, ff = request.args.get('inicio'), request.args.get('fin')
-        reporte = obtener_data_reporte_completo(fi, ff)
-        if not reporte: return jsonify({"error": "Error de datos"}), 500
+    fi, ff = request.args.get('inicio'), request.args.get('fin')
+    reporte = obtener_data_reporte_completo(fi, ff)
+    if not reporte: return jsonify({"error": "Error"}), 500
+    wb = Workbook()
+    ws = wb.active; ws.append(["Reporte General", f"{fi} a {ff}"])
+    buffer = BytesIO(); wb.save(buffer); buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="Reporte.xlsx", mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-        wb = Workbook()
-        ws_resumen = wb.active; ws_resumen.title = "Resumen"
-        ws_resumen.append(["REPORTE", f"{fi} a {ff}"])
-        stats = reporte["estadisticas"]
-        ws_resumen.append(["Movimientos", stats['total_movimientos']])
-        ws_resumen.append(["Autorizados", stats['autorizados']])
-        ws_resumen.append(["Denegados", stats['denegados']])
-
-        ws_acc = wb.create_sheet("Accesos")
-        ws_acc.append(["Fecha", "Placa", "Tipo", "Resultado", "Vigilante"])
-        for acc in reporte["accesos"]:
-            ws_acc.append([acc['fecha'], acc['placa'], acc['tipo'], acc['resultado'], acc['vigilante']])
-
-        buffer = BytesIO(); wb.save(buffer); buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name=f"Reporte_{fi}.xlsx", mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e: return jsonify({"error": str(e)}), 500
-
-@app.route("/api/admin/exportar/pdf", methods=["GET"])
-@token_requerido
-def exportar_pdf():
-    try:
-        fi, ff = request.args.get('inicio'), request.args.get('fin')
-        reporte = obtener_data_reporte_completo(fi, ff)
-        buffer = BytesIO()
-        p = canvas.Canvas(buffer, pagesize=letter)
-        p.setFont("Helvetica-Bold", 16); p.drawString(50, 750, "Informe Gerencial")
-        p.setFont("Helvetica", 10); p.drawString(50, 730, f"Periodo: {fi} al {ff}")
-        
-        y = 700; stats = reporte["estadisticas"]
-        p.drawString(50, y, f"Total: {stats['total_movimientos']} | OK: {stats['autorizados']} | No: {stats['denegados']}")
-        
-        y = 650; p.setFont("Helvetica-Bold", 12); p.drawString(50, y, "Novedades Recientes")
-        y -= 20; p.setFont("Helvetica", 9)
-        for n in reporte["novedades"][:15]:
-            p.drawString(50, y, f"{n['fecha']} - {n['asunto']}: {n['descripcion'][:60]}")
-            y -= 15
-            if y < 50: p.showPage(); y = 750
-        
-        p.save(); buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name="Informe.pdf", mimetype="application/pdf")
-    except Exception as e: return jsonify({"error": str(e)}), 500
-
-# ===========================================================
-# CRUD PERSONAS & VEHÍCULOS
-# ===========================================================
+# CRUD PERSONAS
 @app.route("/api/personas", methods=["GET", "POST"])
 @token_requerido
 def handle_personas():
@@ -258,10 +187,11 @@ def handle_personas():
 def handle_persona_id(id_p):
     if request.method == 'PUT':
         actualizar_persona_controller(id_p, request.json, request.usuario_actual)
-        return jsonify({"mensaje": "Actualizado"}), 200
+        return jsonify({"mensaje": "OK"}), 200
     desactivar_persona_controller(id_p, request.usuario_actual)
-    return jsonify({"mensaje": "Desactivado"}), 200
+    return jsonify({"mensaje": "OK"}), 200
 
+# CRUD VEHÍCULOS
 @app.route("/api/vehiculos", methods=["GET", "POST"])
 @token_requerido
 def handle_vehiculos():
@@ -274,19 +204,16 @@ def handle_vehiculos():
 def handle_vehiculo_id(id_v):
     if request.method == 'PUT':
         actualizar_vehiculo_controller(id_v, request.json, request.usuario_actual)
-        return jsonify({"mensaje": "Actualizado"}), 200
+        return jsonify({"mensaje": "OK"}), 200
     eliminar_vehiculo_controller(id_v, request.usuario_actual)
-    return jsonify({"mensaje": "Eliminado"}), 200
+    return jsonify({"mensaje": "OK"}), 200
 
-# ================================================
+# USUARIO
 @app.route("/api/usuario", methods=["GET"])
 @token_requerido
-def obtener_usuario():
-    return jsonify({"status": "ok", "user": request.usuario_actual}), 200
+def obtener_usuario(): return jsonify({"status": "ok", "user": request.usuario_actual}), 200
 
-# ===========================================================
-# ACCESOS, ALERTAS, VIGILANTE & CALENDARIO
-# ===========================================================
+# ACCESOS Y OPERACIÓN
 @app.route("/api/accesos", methods=["GET"])
 @token_requerido
 def get_historial_accesos():
@@ -305,12 +232,10 @@ def get_alertas(): return jsonify(obtener_alertas_controller()), 200
 @app.route("/api/admin/alertas/<int:id_a>", methods=["DELETE"])
 @token_requerido
 def delete_alerta(id_a):
-    accion = request.get_json().get('accion_resolucion', 'General') if request.get_json() else 'General'
-    if eliminar_alerta_controller(id_a, request.usuario_actual, accion):
-        return jsonify({"mensaje": "Resuelta"}), 200
+    if eliminar_alerta_controller(id_a, request.usuario_actual, request.get_json().get('accion_resolucion', 'General')):
+        return jsonify({"mensaje": "OK"}), 200
     return jsonify({"error": "Error"}), 500
 
-# Rutas Vigilante
 @app.route("/api/vigilante/estado-patio", methods=["GET"])
 @token_requerido
 def get_estado_patio(): return jsonify(obtener_estado_actual_patio()), 200
@@ -318,14 +243,12 @@ def get_estado_patio(): return jsonify(obtener_estado_actual_patio()), 200
 @app.route("/api/vigilante/novedad", methods=["POST"])
 @token_requerido
 def post_novedad():
-    if crear_novedad_general(request.get_json(), request.usuario_actual['id_audit']):
-        return jsonify({"mensaje": "OK"}), 201
+    if crear_novedad_general(request.get_json(), request.usuario_actual['id_audit']): return jsonify({"mensaje": "OK"}), 201
     return jsonify({"error": "Error"}), 500
 
 @app.route("/api/vigilante/mis-reportes", methods=["GET"])
 @token_requerido
-def get_mis_reportes():
-    return jsonify(obtener_historial_vigilante(request.usuario_actual['id_audit'])), 200
+def get_mis_reportes(): return jsonify(obtener_historial_vigilante(request.usuario_actual['id_audit'])), 200
 
 @app.route("/api/vigilante/vehiculos-en-patio", methods=["GET"])
 @token_requerido
@@ -334,44 +257,25 @@ def get_vehiculos_patio(): return jsonify(obtener_vehiculos_en_patio()), 200
 @app.route("/api/vigilante/reportar", methods=["POST"])
 @token_requerido
 def post_reportar_incidente():
-    if crear_incidente_manual(request.get_json(), request.usuario_actual['id_audit']):
-        return jsonify({"mensaje": "Reportado"}), 201
+    if crear_incidente_manual(request.get_json(), request.usuario_actual['id_audit']): return jsonify({"mensaje": "OK"}), 201
     return jsonify({"error": "Error"}), 500
 
-# Calendario
+# CALENDARIO
 @app.route("/api/eventos", methods=["GET", "POST"])
 @token_requerido
 def handle_eventos():
     if request.method == 'GET': return jsonify(obtener_eventos_controller()), 200
-    if request.usuario_actual.get('rol') != 'Administrador': return jsonify({"error": "No auth"}), 403
     id_n = crear_evento_controller(request.get_json(), request.usuario_actual)
-    return jsonify({"mensaje": "Creado", "id": id_n}), 201
+    return jsonify({"mensaje": "OK", "id": id_n}), 201
 
 @app.route("/api/eventos/<int:id_e>", methods=["PUT", "DELETE"])
 @token_requerido
 def handle_evento_id(id_e):
-    if request.usuario_actual.get('rol') != 'Administrador': return jsonify({"error": "No auth"}), 403
     if request.method == 'PUT':
         actualizar_evento_controller(id_e, request.get_json())
-        return jsonify({"mensaje": "Actualizado"}), 200
+        return jsonify({"mensaje": "OK"}), 200
     eliminar_evento_controller(id_e, request.usuario_actual)
-    return jsonify({"mensaje": "Eliminado"}), 200
-
-@app.route("/api/eventos/<int:id_e>/verificar", methods=["PUT"])
-@token_requerido
-def verify_evento(id_e):
-    verificar_evento_controller(id_e, request.get_json().get('verificado', True))
-    return jsonify({"mensaje": "Verificado"}), 200
-
-# ===========================================================
-# STATIC & RUN
-# ===========================================================
-@app.route("/static/<path:filename>")
-def static_files(filename):
-    return send_from_directory(app.static_folder, filename)
+    return jsonify({"mensaje": "OK"}), 200
 
 if __name__ == "__main__":
-    from os import getenv
-    port = int(getenv("PORT", 5000))
-    print(f"✅ Servidor SmartCar ejecutándose en puerto {port}")
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

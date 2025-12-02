@@ -1,0 +1,20 @@
+# Binarios compilados
+/codigo_fuente
+código_fuente.exe
+
+# Archivos de configuración de IDEs
+.vscode/
+.idea/
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de entorno (buena práctica para el futuro)
+.env
+
+venv/
+.venv/
+__pycache__/
+*.pyc
+

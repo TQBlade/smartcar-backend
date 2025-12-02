@@ -71,7 +71,7 @@ TEMPLATE_DIR = os.path.join(BASE_DIR, "frontend", "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.config["SECRET_KEY"] = "SmartCar_SeguridadUltra_2025"
 

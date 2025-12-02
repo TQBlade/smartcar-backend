@@ -1,16 +1,16 @@
 # backend/core/controller_accesos.py
 
 import json
-from backend.core.db.connection import get_connection
-from backend.models.acceso import (
+from core.db.connection import get_connection
+from models.acceso import (
     verificar_vehiculo_dentro, 
     registrar_salida_db, 
     registrar_entrada_db
 )
-from backend.ocr.detector import detectar_placa 
-from backend.core.auditoria_utils import registrar_auditoria_global
-from backend.core.controller_calendario import hay_evento_activo_controller
-from backend.models.vehiculo import registrar_vehiculo_invitado_db
+from ocr.detector import detectar_placa 
+from core.auditoria_utils import registrar_auditoria_global
+from core.controller_calendario import hay_evento_activo_controller
+from models.vehiculo import registrar_vehiculo_invitado_db
 
 # ==========================================================
 # 1. FUNCIÓN PARA OBTENER EL HISTORIAL CON FILTROS

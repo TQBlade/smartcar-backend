@@ -1,4 +1,4 @@
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 
 # ✅ 1. OBTENER ÚLTIMOS ACCESOS (Tráfico Reciente)
 def obtener_ultimos_accesos():

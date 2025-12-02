@@ -3,11 +3,11 @@
 
 import json
 # CORREGIDO: Importación del modelo con la ruta completa
-from backend.models.persona import Persona 
+from models.persona import Persona 
 from core.db.connection import get_connection
 # CORREGIDO: Importación de Psycopg2 para cursores de diccionario
 from psycopg2.extras import RealDictCursor
-from backend.core.auditoria_utils import registrar_auditoria_global
+from core.auditoria_utils import registrar_auditoria_global
 # --- Función de Auditoría (Corregida para bd_carros.sql) ---
 
 def _registrar_auditoria(id_vigilante, entidad, id_entidad, accion, datos_previos=None, datos_nuevos=None):

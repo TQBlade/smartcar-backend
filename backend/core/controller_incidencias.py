@@ -1,6 +1,6 @@
 # backend/core/controller_incidencias.py
 
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 

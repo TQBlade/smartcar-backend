@@ -1,6 +1,6 @@
 # backend/core/auditoria_utils.py
 import json
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 
 def registrar_auditoria_global(id_usuario, entidad, id_entidad, accion, datos_previos=None, datos_nuevos=None):
     """

@@ -1,5 +1,5 @@
 # backend/models/vehiculo.py
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 import json
 
 class Vehiculo:

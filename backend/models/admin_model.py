@@ -1,9 +1,9 @@
 # backend/models/admin_model.py
 import json
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 from psycopg2.extras import RealDictCursor
 # --- IMPORTAR AUDITORÍA ---
-from backend.core.auditoria_utils import registrar_auditoria_global
+from core.auditoria_utils import registrar_auditoria_global
 
 # ==========================================================
 # 1. DASHBOARD BÁSICO (KPIs)

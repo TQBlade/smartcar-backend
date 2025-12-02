@@ -1,5 +1,5 @@
 # backend/models/acceso.py
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 
 def verificar_vehiculo_dentro(placa):
     """

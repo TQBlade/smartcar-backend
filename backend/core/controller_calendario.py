@@ -1,8 +1,8 @@
 # backend/core/controller_calendario.py
 
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 from psycopg2.extras import RealDictCursor
-from backend.core.auditoria_utils import registrar_auditoria_global
+from core.auditoria_utils import registrar_auditoria_global
 
 # ==========================================================
 # 1. OBTENER EVENTOS (Para el Calendario)

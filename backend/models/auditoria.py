@@ -6,7 +6,7 @@ from psycopg2.extras import RealDictCursor
 # Asegurar que la ruta 'backend' esté en sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from backend.core.db.connection import get_connection
+from core.db.connection import get_connection
 
 def obtener_historial_auditoria():
     """

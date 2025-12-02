@@ -1,6 +1,6 @@
 # backend/core/controller_vehiculos.py
 import json
-from backend.models.vehiculo import Vehiculo
+from models.vehiculo import Vehiculo
 from core.db.connection import get_connection
 from psycopg2.extras import RealDictCursor
 from core.controller_personas import _registrar_auditoria 

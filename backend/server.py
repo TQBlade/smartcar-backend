@@ -1,5 +1,5 @@
 # ===========================================================
-#  SmartCar - Servidor Principal con Seguridad JWT
+#  SmartCar - Servidor Principal (CORREGIDO PARA NUEVA ESTRUCTURA)
 # ===========================================================
 import sys
 import os
@@ -13,48 +13,47 @@ from openpyxl import Workbook
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# Configurar rutas del sistema
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'backend')))
+# YA NO NECESITAMOS sys.path.append(...) PORQUE ESTAMOS EN LA RAÍZ
 
 # ===========================================================
-# IMPORTACIONES DEL BACKEND
+# IMPORTACIONES (NOTA: Quitamos "backend.")
 # ===========================================================
-from backend.core.db.connection import get_connection
-from backend.models.user_model import verificar_usuario
-from backend.core.auditoria_utils import registrar_auditoria_global 
+from core.db.connection import get_connection
+from models.user_model import verificar_usuario
+from core.auditoria_utils import registrar_auditoria_global 
 
 # Controladores
-from backend.core.controller_personas import (
+from core.controller_personas import (
     desactivar_persona_controller, obtener_personas_controller,
     crear_persona_controller, actualizar_persona_controller
 )
-from backend.core.controller_vehiculos import (
+from core.controller_vehiculos import (
     eliminar_vehiculo_controller, obtener_vehiculos_controller,
     crear_vehiculo_controller, actualizar_vehiculo_controller
 )
-from backend.core.controller_accesos import (
+from core.controller_accesos import (
     obtener_historial_accesos, procesar_validacion_acceso
 )
-from backend.core.controller_calendario import (
+from core.controller_calendario import (
     obtener_eventos_controller, crear_evento_controller,
     actualizar_evento_controller, eliminar_evento_controller,
     verificar_evento_controller
 )
-from backend.core.controller_incidencias import (
+from core.controller_incidencias import (
     obtener_vehiculos_en_patio, crear_incidente_manual,
     obtener_estado_actual_patio, crear_novedad_general,       
     obtener_historial_vigilante  
 )
-from backend.core.controller_alertas import (
+from core.controller_alertas import (
     obtener_alertas_controller, eliminar_alerta_controller
 )
-from backend.models.auditoria import obtener_historial_auditoria
-from backend.models.dashboard_model import (
+from models.auditoria import obtener_historial_auditoria
+from models.dashboard_model import (
     obtener_ultimos_accesos, contar_total_vehiculos,
     contar_alertas_activas, buscar_placa_bd,
-    obtener_ocupacion_real # <--- IMPORTANTE: Esta función se usa abajo
+    obtener_ocupacion_real
 )
-from backend.models.admin_model import (
+from models.admin_model import (
     obtener_datos_dashboard,
     obtener_accesos_detalle,
     registrar_vigilante_completo, 

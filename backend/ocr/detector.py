@@ -4,20 +4,29 @@ import numpy as np
 import base64
 import os
 import re
-from collections import Counter
+import gc # Garbage Collector
 
-# ==============================================================================
-# 1. CONFIGURACIÓN E INICIALIZACIÓN
-# ==============================================================================
-print("🚀 Inicializando Motor de Reconocimiento de Placas (v3.0 - Ultimate)...")
-try:
-    # Cargamos español (es) e inglés (en) para maximizar cobertura de caracteres
-    reader = easyocr.Reader(['es', 'en'], gpu=False)
-    print("✅ Motor OCR cargado correctamente.")
-except Exception as e:
-    print(f"❌ Error crítico cargando OCR: {e}")
-    reader = None
+# --- 1. CONFIGURACIÓN MEMORIA ---
+# Variable global vacía al inicio para no gastar RAM
+_reader_instance = None
 
+def get_reader():
+    """
+    Carga el modelo solo cuando se necesita y usa optimización (quantize).
+    Patrón Singleton.
+    """
+    global _reader_instance
+    if _reader_instance is None:
+        print("⚡ Cargando modelo EasyOCR en memoria (Lazy Load)...")
+        # quantize=True reduce el uso de memoria sacrificando mínimamente precisión
+        # Quitamos 'en' para ahorrar memoria, 'es' lee caracteres latinos bien.
+        _reader_instance = easyocr.Reader(['es'], gpu=False, quantize=True)
+        print("✅ Modelo cargado.")
+    return _reader_instance
+
+def limpiar_memoria():
+    """Fuerza la limpieza de RAM"""
+    gc.collect()
 # ==============================================================================
 # 2. BASES DE CONOCIMIENTO (Diccionarios de Corrección)
 # ==============================================================================

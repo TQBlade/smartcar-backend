@@ -200,6 +200,7 @@ def evaluar_candidato(texto_crudo):
 # 5. FUNCIÓN PRINCIPAL EXPORTADA
 # ==============================================================================
 def detectar_placa(base64_image_data: str) -> str | None:
+    reader = get_reader() # Pedimos el lector aquí, no usamos la variable global directa
     if reader is None: return None
 
     try:

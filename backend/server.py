@@ -371,5 +371,7 @@ def static_files(filename):
     return send_from_directory(app.static_folder, filename)
 
 if __name__ == "__main__":
-    print("✅ Servidor SmartCar ejecutándose en http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    from os import getenv
+    port = int(getenv("PORT", 5000))
+    print(f"✅ Servidor SmartCar ejecutándose en puerto {port}")
+    app.run(host="0.0.0.0", port=port)

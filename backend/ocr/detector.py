@@ -4,147 +4,262 @@ import numpy as np
 import base64
 import os
 import re
-import gc # Garbage Collector para limpiar RAM
+import gc # Garbage Collector
 
-# ==============================================================================
-# 1. INICIALIZACIÓN (MODO AHORRO DE MEMORIA)
-# ==============================================================================
-print("🚀 Inicializando OCR (Modo Low-RAM)...")
-try:
-    # quantize=True reduce el uso de memoria del modelo a la mitad
-    reader = easyocr.Reader(['es'], gpu=False, quantize=True)
-    print("✅ Motor OCR cargado.")
-except Exception as e:
-    print(f"❌ Error OCR: {e}")
-    reader = None
+# --- 1. CONFIGURACIÓN MEMORIA ---
+# Variable global vacía al inicio para no gastar RAM
+_reader_instance = None
 
-# ==============================================================================
-# 2. DICCIONARIOS DE CORRECCIÓN
-# ==============================================================================
-L2N = {'O':'0','Q':'0','D':'0','U':'0','C':'0','I':'1','J':'1','L':'1','T':'1','l':'1','Z':'2','z':'2','?':'2','E':'3','B':'3','A':'4','S':'5','s':'5','G':'6','b':'6','B':'8','R':'8','g':'9','q':'9','P':'9'}
-N2L = {'0':'O','1':'I','2':'Z','3':'E','4':'A','5':'S','6':'G','7':'T','8':'B'}
+def get_reader():
+    """
+    Carga el modelo solo cuando se necesita y usa optimización (quantize).
+    Patrón Singleton.
+    """
+    global _reader_instance
+    if _reader_instance is None:
+        print("⚡ Cargando modelo EasyOCR en memoria (Lazy Load)...")
+        # quantize=True reduce el uso de memoria sacrificando mínimamente precisión
+        # Quitamos 'en' para ahorrar memoria, 'es' lee caracteres latinos bien.
+        _reader_instance = easyocr.Reader(['es'], gpu=False, quantize=True)
+        print("✅ Modelo cargado.")
+    return _reader_instance
 
+def limpiar_memoria():
+    """Fuerza la limpieza de RAM"""
+    gc.collect()
+# ==============================================================================
+# 2. BASES DE CONOCIMIENTO (Diccionarios de Corrección)
+# ==============================================================================
+
+# Mapa: Cuando esperamos un NÚMERO (N) pero el OCR leyó una LETRA
+L2N = {
+    'O': '0', 'Q': '0', 'D': '0', 'U': '0', 'C': '0',
+    'I': '1', 'J': '1', 'L': '1', 'T': '1', 'l': '1',
+    'Z': '2', 'z': '2', '?': '2',
+    'E': '3', 'B': '3',
+    'A': '4',
+    'S': '5', 's': '5',
+    'G': '6', 'b': '6',
+    'T': '7', 'Y': '7',
+    'B': '8', 'R': '8',
+    'g': '9', 'q': '9', 'P': '9'
+}
+
+# Mapa: Cuando esperamos una LETRA (L) pero el OCR leyó un NÚMERO
+N2L = {
+    '0': 'O',
+    '1': 'I',
+    '2': 'Z',
+    '3': 'E',
+    '4': 'A',
+    '5': 'S',
+    '6': 'G',
+    '7': 'T',
+    '8': 'B'
+}
+
+# Moldes oficiales
 PATRONES = {
     'COL_CARRO': {'len': 6, 'mask': 'LLLNNN', 'regex': r'^[A-Z]{3}[0-9]{3}$'},
     'COL_MOTO':  {'len': 6, 'mask': 'LLLNNL', 'regex': r'^[A-Z]{3}[0-9]{2}[A-Z]$'},
-    'VEN_AUTO':  {'len': 7, 'mask': 'LLNNNLL', 'regex': r'^[A-Z]{2}[0-9]{3}[A-Z]{2}$'}
+    'VEN_AUTO':  {'len': 7, 'mask': 'LLNNNLL', 'regex': r'^[A-Z]{2}[0-9]{3}[A-Z]{2}$'},
+    # 'VEN_OLD': {'len': 6, 'mask': 'LLLNNL', 'regex': r'^[A-Z]{3}[0-9]{2}[A-Z]$'} # Igual a moto COL
 }
-BLACKLIST = ['COLOMBIA', 'BOGOTA', 'MEDELLIN', 'ANTIGUO', 'AUTO', 'MOVIL']
+
+# Palabras a ignorar (Ruido común en los marcos de placas)
+BLACKLIST = ['COLOMBIA', 'BOGOTA', 'MEDELLIN', 'ANTIGUO', 'AUTO', 'MOVIL', 'TRANSITO', 'SERVICIO', 'PARTICULAR', 'ENVIGADO', 'SABANETA']
 
 # ==============================================================================
-# 3. LÓGICA DE CORRECCIÓN
+# 3. MOTOR DE PREPROCESAMIENTO DE IMÁGENES
+# ==============================================================================
+def generar_pipelines_imagen(img_original):
+    """
+    Genera múltiples versiones de la imagen para intentar vencer
+    diferentes condiciones de luz, sombra y suciedad.
+    """
+    pipelines = []
+    
+    # --- A. Escala de Grises (Base) ---
+    gray = cv2.cvtColor(img_original, cv2.COLOR_BGR2GRAY)
+    pipelines.append(('GRAY', gray))
+
+    # --- B. CLAHE (Para sombras fuertes como en la moto amarilla) ---
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    gray_clahe = clahe.apply(gray)
+    pipelines.append(('CLAHE', gray_clahe))
+
+    # --- C. Binarización Otsu (Alto contraste blanco/negro) ---
+    # Bueno para placas sucias pero con buen contraste de tinta
+    blur = cv2.GaussianBlur(gray, (5,5), 0)
+    _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    pipelines.append(('OTSU', otsu))
+
+    # --- D. Aumento de Contraste Lineal (Para placas descoloridas) ---
+    # alpha=1.5 (contraste), beta=0 (brillo)
+    contrast = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
+    pipelines.append(('CONTRAST', contrast))
+
+    # --- E. Invertido (Para casos raros de letras claras fondo oscuro) ---
+    # inverted = cv2.bitwise_not(otsu)
+    # pipelines.append(('INVERT', inverted))
+
+    return pipelines
+
+# ==============================================================================
+# 4. MOTOR DE ANÁLISIS Y CORRECCIÓN
 # ==============================================================================
 def aplicar_mascara(texto, mascara):
+    """
+    Intenta forzar un texto a cumplir una máscara específica (ej: LLLNNN).
+    Retorna: (Texto Corregido, Penalización)
+    Penalización: 0 = Perfecto, >0 = Se tuvieron que cambiar caracteres.
+    Retorna (None, 999) si es imposible corregir.
+    """
     texto_lista = list(texto)
     if len(texto_lista) != len(mascara): return None, 999
-    costo = 0
+    
+    penalizacion = 0
     nuevo_texto = []
+
     for i, tipo_esperado in enumerate(mascara):
         char = texto_lista[i]
+        
+        # 1. Si esperamos NÚMERO
         if tipo_esperado == 'N':
-            if char.isdigit(): nuevo_texto.append(char)
-            elif char in L2N: 
-                nuevo_texto.append(L2N[char])
-                costo += 1
-            else: return None, 999
+            if char.isdigit():
+                nuevo_texto.append(char) # OK
+            elif char in L2N:
+                nuevo_texto.append(L2N[char]) # Corregido
+                penalizacion += 1
+            else:
+                return None, 999 # Error fatal (ej: 'K' donde va número)
+
+        # 2. Si esperamos LETRA
         elif tipo_esperado == 'L':
-            if char.isalpha(): nuevo_texto.append(char)
-            elif char in N2L: 
-                nuevo_texto.append(N2L[char])
-                costo += 1
-            else: return None, 999
-    return "".join(nuevo_texto), costo
+            if char.isalpha():
+                nuevo_texto.append(char) # OK
+            elif char in N2L:
+                nuevo_texto.append(N2L[char]) # Corregido
+                penalizacion += 1
+            else:
+                return None, 999 # Error fatal
+
+    return "".join(nuevo_texto), penalizacion
 
 def evaluar_candidato(texto_crudo):
+    """
+    Recibe un texto crudo del OCR (ej: "OMG-65O") y lo evalúa contra
+    TODOS los patrones posibles. Devuelve el mejor ajuste.
+    """
+    # 1. Limpieza inicial: Solo alfanuméricos mayúsculas
     limpio = re.sub(r'[^A-Z0-9]', '', texto_crudo.upper())
-    largo = len(limpio)
-    candidatos = []
-    subcadenas = [limpio]
-    if largo > 6:
-        subcadenas.append(limpio[0:6])
-        subcadenas.append(limpio[1:7])
-
-    for sub in subcadenas:
-        largo_sub = len(sub)
-        for nombre, reglas in PATRONES.items():
-            if largo_sub == reglas['len']:
-                res, costo = aplicar_mascara(sub, reglas['mask'])
-                if res:
-                    score = 100 - (costo * 15)
-                    if re.match(reglas['regex'], res): score += 10
-                    candidatos.append({'placa': res, 'score': score, 'patron': nombre})
     
-    if not candidatos: return None
-    candidatos.sort(key=lambda x: x['score'], reverse=True)
-    return candidatos[0]
+    mejores_opciones = []
+
+    # Generamos subcadenas para eliminar bordes (ventanas deslizantes)
+    # Ej: "|OMG650" (7 chars) -> probamos "OMG650"
+    subcadenas = [limpio]
+    if len(limpio) > 6:
+        for i in range(len(limpio) - 5): # Ventanas de 6
+            subcadenas.append(limpio[i:i+6])
+        for i in range(len(limpio) - 6): # Ventanas de 7
+            subcadenas.append(limpio[i:i+7])
+
+    # Probamos cada subcadena contra cada patrón
+    for sub in subcadenas:
+        largo = len(sub)
+        
+        for nombre_patron, reglas in PATRONES.items():
+            if largo == reglas['len']:
+                texto_corregido, costo = aplicar_mascara(sub, reglas['mask'])
+                
+                if texto_corregido:
+                    # Cálculo de Puntaje (Score)
+                    # Base 100. Restamos 10 por cada corrección.
+                    score = 100 - (costo * 10)
+                    
+                    # Bonus por Regex exacto (Doble verificación)
+                    if re.match(reglas['regex'], texto_corregido):
+                        score += 5
+                    
+                    mejores_opciones.append({
+                        'placa': texto_corregido,
+                        'score': score,
+                        'patron': nombre_patron,
+                        'original': texto_crudo
+                    })
+
+    if not mejores_opciones:
+        return None
+
+    # Ordenamos por puntaje descendente
+    mejores_opciones.sort(key=lambda x: x['score'], reverse=True)
+    return mejores_opciones[0] # Retornamos el ganador
 
 # ==============================================================================
-# 4. FUNCIÓN PRINCIPAL (OPTIMIZADA PARA MEMORIA)
+# 5. FUNCIÓN PRINCIPAL EXPORTADA
 # ==============================================================================
 def detectar_placa(base64_image_data: str) -> str | None:
+    reader = get_reader() # Pedimos el lector aquí, no usamos la variable global directa
     if reader is None: return None
 
     try:
-        # 1. Decodificar
-        if ',' in base64_image_data: base64_image_data = base64_image_data.split(',')[1]
+        # A. Decodificar Imagen
+        if ',' in base64_image_data:
+            base64_image_data = base64_image_data.split(',')[1]
         img_bytes = base64.b64decode(base64_image_data)
         np_arr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if img is None: return None
 
-        mejores_placas = []
-
-        # --- ESTRATEGIA SECUENCIAL (AHORRO RAM) ---
-        # Procesamos 1 filtro, leemos, y borramos la imagen de memoria inmediatamente.
+        # B. Generar Pipelines de Imagen
+        imagenes_proc = generar_pipelines_imagen(img)
         
-        # FILTRO 1: GRISES (El más liviano)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        textos = reader.readtext(gray, detail=0, paragraph=False, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
-        for t in textos:
-            c = evaluar_candidato(t)
-            if c: mejores_placas.append(c)
-        
-        # Limpieza RAM inmediata
-        del textos
-        gc.collect() 
+        todos_los_candidatos = []
 
-        # Si ya encontramos algo con puntaje perfecto, retornamos y NO procesamos más (Ahorro máximo)
-        if mejores_placas and mejores_placas[0]['score'] >= 100:
-            print(f"✅ Placa rápida encontrada: {mejores_placas[0]['placa']}")
-            return mejores_placas[0]['placa']
+        print(f"👁️  Analizando imagen con {len(imagenes_proc)} filtros...")
 
-        # FILTRO 2: CLAHE (Para sombras, solo si no encontramos una perfecta antes)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        gray_clahe = clahe.apply(gray)
-        textos = reader.readtext(gray_clahe, detail=0, paragraph=False, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
-        for t in textos:
-            c = evaluar_candidato(t)
-            if c: mejores_placas.append(c)
-        
-        # Limpieza RAM
-        del gray_clahe, clahe, textos
-        gc.collect()
+        # C. Barrido OCR
+        for nombre_filtro, img_p in imagenes_proc:
+            # allowlist: Solo caracteres que pueden estar en una placa
+            resultados = reader.readtext(img_p, detail=0, paragraph=False, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+            
+            for txt in resultados:
+                txt = txt.upper()
+                # Filtrar basura obvia (palabras prohibidas o muy cortas)
+                if len(txt) < 5 or any(b in txt for b in BLACKLIST):
+                    continue
+                
+                # Evaluar candidato
+                ganador_local = evaluar_candidato(txt)
+                if ganador_local:
+                    ganador_local['filtro'] = nombre_filtro
+                    todos_los_candidatos.append(ganador_local)
+                    # print(f"   > Candidato ({nombre_filtro}): {ganador_local['placa']} (Score: {ganador_local['score']})")
 
-        # FILTRO 3: BINARIZACIÓN (Solo si seguimos dudando)
-        # Blur suave para reducir ruido antes de binarizar
-        blur = cv2.GaussianBlur(gray, (5,5), 0)
-        _, binary = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        textos = reader.readtext(binary, detail=0, paragraph=False, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
-        for t in textos:
-            c = evaluar_candidato(t)
-            if c: mejores_placas.append(c)
+        # D. Selección del Ganador Absoluto
+        if not todos_los_candidatos:
+            print("⚠️ No se encontró ninguna placa válida.")
+            return None
 
-        # Limpieza Final
-        del gray, blur, binary, textos, img, np_arr, img_bytes
-        gc.collect()
+        # Ordenar por Score
+        todos_los_candidatos.sort(key=lambda x: x['score'], reverse=True)
+        ganador_absoluto = todos_los_candidatos[0]
 
-        if mejores_placas:
-            mejores_placas.sort(key=lambda x: x['score'], reverse=True)
-            print(f"✅ Ganador final: {mejores_placas[0]['placa']}")
-            return mejores_placas[0]['placa']
-
-        return None
+        print(f"✅ PLACA DETECTADA: {ganador_absoluto['placa']} (Patrón: {ganador_absoluto['patron']}, Score: {ganador_absoluto['score']})")
+        return ganador_absoluto['placa']
 
     except Exception as e:
-        print(f"❌ Error memoria/OCR: {e}")
+        print(f"❌ Error en proceso OCR: {e}")
         return None
+
+# --- TEST LOCAL ---
+if __name__ == "__main__":
+    # Cambia esto por la ruta de tu imagen local para probar
+    path = os.path.join(os.path.dirname(__file__), "img_placas/placa_prueba3.jpg")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode('utf-8')
+        detectar_placa(b64)
+    else:
+        print("Archivo de prueba no encontrado.")

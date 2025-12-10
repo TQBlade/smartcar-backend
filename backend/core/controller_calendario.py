@@ -1,8 +1,8 @@
 # backend/core/controller_calendario.py
 
-from core.db.connection import get_connection
+from backend.core.db.connection import get_connection
 from psycopg2.extras import RealDictCursor
-from core.auditoria_utils import registrar_auditoria_global
+from backend.core.auditoria_utils import registrar_auditoria_global
 
 # ==========================================================
 # 1. OBTENER EVENTOS (Para el Calendario)
@@ -10,20 +10,22 @@ from core.auditoria_utils import registrar_auditoria_global
 def obtener_eventos_controller():
     """
     Obtiene todos los eventos para mostrarlos en el calendario.
-    Formatea las fechas como cadenas ISO para que React las entienda.
+    Formatea las fechas como cadenas ISO para que React las entienda sin restar días.
     """
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
+        # Usamos TO_CHAR con formato ISO 8601 (YYYY-MM-DD"T"HH24:MI:SS)
+        # Esto asegura que el Frontend reciba la hora exacta de la BD sin conversiones locas de UTC
         query = """
             SELECT 
                 id_evento,
                 titulo,
                 descripcion,
-                TO_CHAR(fecha_inicio, 'YYYY-MM-DD"T"HH24:MI:SS') as start, -- Formato ISO
-                TO_CHAR(fecha_fin, 'YYYY-MM-DD"T"HH24:MI:SS') as end,     -- Formato ISO
+                TO_CHAR(fecha_inicio, 'YYYY-MM-DD"T"HH24:MI:SS') as start,
+                TO_CHAR(fecha_fin, 'YYYY-MM-DD"T"HH24:MI:SS') as end,
                 ubicacion,
                 categoria,
                 verificado,
@@ -44,16 +46,15 @@ def obtener_eventos_controller():
 # ==========================================================
 def hay_evento_activo_controller():
     """
-    Verifica si hay algún evento activo en este momento (Fecha Actual entre Inicio y Fin).
+    Verifica si hay algún evento activo en este momento exacto (Fecha Actual entre Inicio y Fin).
     Retorna True si hay evento, False si no.
-    Útil para permitir acceso a invitados.
+    Útil para permitir acceso a vehículos NO registrados como 'Invitados'.
     """
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
         
-        # Consultamos si hay al menos un evento activo ahora mismo
         query = """
             SELECT COUNT(*) 
             FROM evento 
@@ -92,8 +93,8 @@ def crear_evento_controller(data, usuario_actual):
         cursor.execute(query, (
             data.get('titulo'),
             data.get('descripcion'),
-            data.get('start'), # El frontend debe enviar 'start' (fecha inicio)
-            data.get('end'),   # El frontend debe enviar 'end' (fecha fin)
+            data.get('start'), # Frontend debe enviar formato ISO
+            data.get('end'),   # Frontend debe enviar formato ISO
             data.get('ubicacion'),
             data.get('categoria'),
             id_creador
@@ -155,7 +156,7 @@ def actualizar_evento_controller(id_evento, data):
         if conn: conn.close()
 
 # ==========================================================
-# 5. ELIMINAR EVENTO (Corregido con Auditoría)
+# 5. ELIMINAR EVENTO (Con Auditoría)
 # ==========================================================
 def eliminar_evento_controller(id_evento, usuario_actual):
     """

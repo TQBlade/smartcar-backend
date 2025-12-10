@@ -18,7 +18,7 @@ from reportlab.pdfgen import canvas
 from core.db.connection import get_connection
 from models.user_model import verificar_usuario
 from core.auditoria_utils import registrar_auditoria_global 
-
+from backend.core.pico_placa import verificar_pico_placa
 # Controladores
 from core.controller_personas import (
     desactivar_persona_controller, obtener_personas_controller,
@@ -297,5 +297,10 @@ def verify_evento(id_e):
     verificar_evento_controller(id_e, request.get_json().get('verificado', True))
     return jsonify({"mensaje": "Verificado"}), 200
 
+@app.route("/api/pico-placa/<placa>", methods=["GET"])
+def api_pico_placa(placa):
+    resultado = verificar_pico_placa(placa)
+    return jsonify(resultado), 200
+# =====================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

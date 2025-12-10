@@ -5,28 +5,35 @@ import base64
 import os
 import re
 import gc # Garbage Collector
+from collections import Counter
 
-# --- 1. CONFIGURACIÓN MEMORIA ---
-# Variable global vacía al inicio para no gastar RAM
+# ==============================================================================
+# 1. GESTIÓN DE MEMORIA Y CARGA PEREZOSA (CRÍTICO PARA RENDER)
+# ==============================================================================
 _reader_instance = None
 
 def get_reader():
     """
-    Carga el modelo solo cuando se necesita y usa optimización (quantize).
-    Patrón Singleton.
+    Carga el modelo solo cuando se necesita y usa optimización (quantize)
+    para ahorrar memoria RAM. Patrón Singleton.
     """
     global _reader_instance
     if _reader_instance is None:
         print("⚡ Cargando modelo EasyOCR en memoria (Lazy Load)...")
-        # quantize=True reduce el uso de memoria sacrificando mínimamente precisión
-        # Quitamos 'en' para ahorrar memoria, 'es' lee caracteres latinos bien.
-        _reader_instance = easyocr.Reader(['es'], gpu=False, quantize=True)
-        print("✅ Modelo cargado.")
+        try:
+            # quantize=True reduce el uso de memoria sacrificando mínimamente precisión
+            # Solo cargamos 'es' y 'en' si es estrictamente necesario, aquí priorizamos 'es'
+            _reader_instance = easyocr.Reader(['es', 'en'], gpu=False, quantize=True)
+            print("✅ Modelo cargado.")
+        except Exception as e:
+            print(f"❌ Error fatal cargando OCR: {e}")
+            return None
     return _reader_instance
 
 def limpiar_memoria():
-    """Fuerza la limpieza de RAM"""
+    """Fuerza la limpieza de RAM después de usar el modelo"""
     gc.collect()
+
 # ==============================================================================
 # 2. BASES DE CONOCIMIENTO (Diccionarios de Corrección)
 # ==============================================================================
@@ -98,10 +105,6 @@ def generar_pipelines_imagen(img_original):
     # alpha=1.5 (contraste), beta=0 (brillo)
     contrast = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
     pipelines.append(('CONTRAST', contrast))
-
-    # --- E. Invertido (Para casos raros de letras claras fondo oscuro) ---
-    # inverted = cv2.bitwise_not(otsu)
-    # pipelines.append(('INVERT', inverted))
 
     return pipelines
 
@@ -200,7 +203,8 @@ def evaluar_candidato(texto_crudo):
 # 5. FUNCIÓN PRINCIPAL EXPORTADA
 # ==============================================================================
 def detectar_placa(base64_image_data: str) -> str | None:
-    reader = get_reader() # Pedimos el lector aquí, no usamos la variable global directa
+    # --- AHORRO DE MEMORIA: CARGA PEREZOSA ---
+    reader = get_reader() 
     if reader is None: return None
 
     try:
@@ -224,6 +228,9 @@ def detectar_placa(base64_image_data: str) -> str | None:
             # allowlist: Solo caracteres que pueden estar en una placa
             resultados = reader.readtext(img_p, detail=0, paragraph=False, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
             
+            # --- LIMPIEZA DE MEMORIA ---
+            limpiar_memoria()
+            
             for txt in resultados:
                 txt = txt.upper()
                 # Filtrar basura obvia (palabras prohibidas o muy cortas)
@@ -235,7 +242,6 @@ def detectar_placa(base64_image_data: str) -> str | None:
                 if ganador_local:
                     ganador_local['filtro'] = nombre_filtro
                     todos_los_candidatos.append(ganador_local)
-                    # print(f"   > Candidato ({nombre_filtro}): {ganador_local['placa']} (Score: {ganador_local['score']})")
 
         # D. Selección del Ganador Absoluto
         if not todos_los_candidatos:
@@ -247,6 +253,10 @@ def detectar_placa(base64_image_data: str) -> str | None:
         ganador_absoluto = todos_los_candidatos[0]
 
         print(f"✅ PLACA DETECTADA: {ganador_absoluto['placa']} (Patrón: {ganador_absoluto['patron']}, Score: {ganador_absoluto['score']})")
+        
+        # Limpieza final
+        limpiar_memoria()
+        
         return ganador_absoluto['placa']
 
     except Exception as e:
@@ -255,7 +265,6 @@ def detectar_placa(base64_image_data: str) -> str | None:
 
 # --- TEST LOCAL ---
 if __name__ == "__main__":
-    # Cambia esto por la ruta de tu imagen local para probar
     path = os.path.join(os.path.dirname(__file__), "img_placas/placa_prueba3.jpg")
     if os.path.exists(path):
         with open(path, "rb") as f:

@@ -1,5 +1,5 @@
 # ===========================================================
-#  SmartCar - Servidor Principal (PRODUCCIÓN)
+#  SmartCar - Servidor Principal (PRODUCCIÓN FINAL)
 # ===========================================================
 import sys
 import os
@@ -13,12 +13,12 @@ from openpyxl import Workbook
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# ===========================================================
-# IMPORTACIONES CORREGIDAS (Sin "backend.")
-# ===========================================================
-# Nota: Al estar server.py en la raíz junto a 'core' y 'models',
-# importamos directamente desde ellos.
+# Configuración de ruta raíz para importaciones
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# ===========================================================
+# IMPORTACIONES (Estructura Plana para Despliegue)
+# ===========================================================
 from core.db.connection import get_connection
 from models.user_model import verificar_usuario
 from core.auditoria_utils import registrar_auditoria_global 
@@ -76,7 +76,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
 
-# HABILITAR CORS PARA TODO (Necesario para Vercel)
+# HABILITAR CORS PARA TODO (Evita errores en Vercel)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "SmartCar_SeguridadUltra_2025")
@@ -183,6 +183,7 @@ def api_registrar_vigilante():
         data = request.get_json()
         if not data.get('usuario') or not data.get('clave'):
             return jsonify({"error": "Usuario y Clave son obligatorios"}), 400
+        # Pasamos el ID del admin para la auditoría
         if registrar_vigilante_completo(data, request.usuario_actual['id_audit']):
             return jsonify({"mensaje": "Registrado correctamente"}), 201
         return jsonify({"error": "Error al registrar"}), 500

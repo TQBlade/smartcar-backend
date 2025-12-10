@@ -14,8 +14,11 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 # ===========================================================
-# IMPORTACIONES (Estructura Plana para Despliegue)
+# IMPORTACIONES CORREGIDAS (Sin "backend.")
 # ===========================================================
+# Nota: Al estar server.py en la raíz junto a 'core' y 'models',
+# importamos directamente desde ellos.
+
 from core.db.connection import get_connection
 from models.user_model import verificar_usuario
 from core.auditoria_utils import registrar_auditoria_global 
@@ -73,7 +76,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "frontend", "static")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
 
-# HABILITAR CORS PARA TODO (Evita errores en Vercel)
+# HABILITAR CORS PARA TODO (Necesario para Vercel)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "SmartCar_SeguridadUltra_2025")
@@ -116,7 +119,7 @@ def login():
     except Exception as e: return jsonify({"error": str(e)}), 500
 
 # ===========================================================
-# PICO Y PLACA (NUEVA RUTA)
+# PICO Y PLACA
 # ===========================================================
 @app.route("/api/pico-placa/<placa>", methods=["GET"])
 def api_pico_placa(placa):
@@ -320,6 +323,7 @@ def delete_alerta(id_a):
         return jsonify({"mensaje": "Resuelta"}), 200
     return jsonify({"error": "Error"}), 500
 
+# Rutas Vigilante
 @app.route("/api/vigilante/estado-patio", methods=["GET"])
 @token_requerido
 def get_estado_patio(): return jsonify(obtener_estado_actual_patio()), 200

@@ -3,6 +3,10 @@
 # ===========================================================
 import sys
 import os
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
 from flask import Flask, jsonify, request, render_template, send_from_directory, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -13,8 +17,6 @@ from openpyxl import Workbook
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# Configuración de ruta raíz para importaciones
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # ===========================================================
 # IMPORTACIONES (Estructura Plana para Despliegue)
